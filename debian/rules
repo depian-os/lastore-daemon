@@ -1,0 +1,36 @@
+#!/usr/bin/make -f
+
+export GOCACHE := /tmp/gocache
+export GOPATH := /usr/share/gocode
+export SECURITY_BUILD_OPTIONS = -fstack-protector-strong -D_FORTITY_SOURCE=1 -z noexecstack -pie -fPIC -z lazy
+
+SYSTYPE=$(shell grep Type= /etc/deepin-version|cut -d= -f 2)
+
+depend_ostree = true
+
+ifdef depend_ostree
+	DistDepends += ostree,
+endif
+
+ifneq ($(DEB_BUILD_ARCH), mips64el)
+    export GOBUILD_OPTIONS=-ldflags '-linkmode=external -extldflags "-pie"'
+endif
+
+%:
+	dh $@
+
+override_dh_install:
+	dh_install --sourcedir=debian/tmp
+
+ifeq ($(DEB_BUILD_ARCH), mipsel)
+override_dh_auto_test:
+
+endif
+
+ifdef DistDepends
+override_dh_gencontrol:
+	dh_gencontrol -- -Vdist:Depends="$(DistDepends)"
+endif
+
+override_dh_installsystemd:
+	dh_installsystemd -r --no-restart-after-upgrade --no-start
