@@ -21,6 +21,10 @@ import (
 	"github.com/linuxdeepin/lastore-daemon/src/internal/system"
 )
 
+const aptLimitKey = "Acquire::http::Dl-Limit"
+const aptSourcePartsKey = "Dir::Etc::SourceParts"
+const aptSourceListKey = "Dir::Etc::SourceList"
+
 type APTSystem struct {
 	CmdSet            map[string]*system.Command
 	Indicator         system.Indicator
@@ -275,7 +279,24 @@ func (p *APTSystem) DownloadSource(jobId string, packages []string, environ map[
 	*/
 
 	if p.IncrementalUpdate {
-		c := newAPTCommand(p, jobId, system.IncrementalDownloadJobType, p.Indicator, append(packages, OptionToArgs(args)...))
+		var cmdArgs []string
+		speedLimit, ok := args[aptLimitKey]
+		if ok {
+			cmdArgs = append(cmdArgs, "--max-recv-speed", speedLimit)
+		}
+
+		var upgradeArgString string
+		aptSourceList, ok1 := args[aptSourceListKey]
+		aptSourceParts, ok2 := args[aptSourcePartsKey]
+		if ok1 && ok2 {
+			upgradeArgString = fmt.Sprintf("-o %s=%s -o %s=%s",
+				aptSourceListKey, aptSourceList,
+				aptSourcePartsKey, aptSourceParts)
+		}
+		environ["DEEPIN_IMMUTABLE_UPGRADE_APT_OPTION"] = upgradeArgString
+		logger.Info("DownloadSource set env DEEPIN_IMMUTABLE_UPGRADE_APT_OPTION:", upgradeArgString)
+
+		c := newAPTCommand(p, jobId, system.IncrementalDownloadJobType, p.Indicator, cmdArgs)
 		c.SetEnv(environ)
 		return c.Start()
 	}
@@ -323,7 +344,24 @@ func (p *APTSystem) DistUpgrade(jobId string, packages []string, environ map[str
 
 	if p.IncrementalUpdate {
 		logger.Info("incremental update")
-		c := newAPTCommand(p, jobId, system.IncrementalUpdateJobType, p.Indicator, append(packages, OptionToArgs(args)...))
+		var cmdArgs []string
+		speedLimit, ok := args[aptLimitKey]
+		if ok {
+			cmdArgs = append(cmdArgs, "--max-recv-speed", speedLimit)
+		}
+
+		var upgradeArgString string
+		aptSourceList, ok1 := args[aptSourceListKey]
+		aptSourceParts, ok2 := args[aptSourcePartsKey]
+		if ok1 && ok2 {
+			upgradeArgString = fmt.Sprintf("-o %s=%s -o %s=%s",
+				aptSourceListKey, aptSourceList,
+				aptSourcePartsKey, aptSourceParts)
+		}
+		environ["DEEPIN_IMMUTABLE_UPGRADE_APT_OPTION"] = upgradeArgString
+		logger.Info("DistUpgrade set env DEEPIN_IMMUTABLE_UPGRADE_APT_OPTION:", upgradeArgString)
+
+		c := newAPTCommand(p, jobId, system.IncrementalUpdateJobType, p.Indicator, cmdArgs)
 		c.SetEnv(environ)
 		return c.Start()
 	}
@@ -337,8 +375,9 @@ func (p *APTSystem) DistUpgrade(jobId string, packages []string, environ map[str
 func (p *APTSystem) UpdateSource(jobId string, environ map[string]string, args map[string]string) error {
 	if p.IncrementalUpdate {
 		cmd := exec.Command(system.DeepinImmutableCtlPath, "upgrade", "update-remote")
-		if err := cmd.Run(); err != nil {
-			return err
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to update remotes: %w, %s", err, string(output))
 		}
 	}
 	c := newAPTCommand(p, jobId, system.UpdateSourceJobType, p.Indicator, OptionToArgs(args))

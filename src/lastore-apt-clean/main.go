@@ -46,12 +46,14 @@ func mustGetBin(name string) string {
 var options struct {
 	forceDelete bool
 	printJSON   bool
+	incrementalUpdate bool
 }
 
 func init() {
 	flag.BoolVar(&options.forceDelete, "force-delete", false, "force delete deb files")
 	flag.BoolVar(&options.printJSON, "print-json", false,
 		"Print information about files that can be safely deleted, in json format")
+	flag.BoolVar(&options.incrementalUpdate, "incremental-update", false, "whether to enable incremental update")
 	_ = os.Setenv("LC_ALL", "C")
 }
 
@@ -71,6 +73,14 @@ func main() {
 		logger.RemoveBackendConsole()
 	}
 	findBins()
+
+	// 如果是增量更新，则调用deepin-immutable-ctl upgrade cleanup命令清理immutable系统的缓存deb包和ostree包分支
+	if options.incrementalUpdate {
+		err := exec.Command("deepin-immutable-ctl", "upgrade", "clean").Run()
+		if err != nil {
+			logger.Debugf("failed to clean upgrade cache: %v", err)
+		}
+	}
 
 	appendArchivesDirInfos(system.LastoreAptV2CommonConfPath) // 将lastore缓存路径/var/cache/lastore/archives添加
 	appendArchivesDirInfos(system.LastoreAptOrgConfPath)      // 将默认缓存路径/var/cache/apt/archives添加
